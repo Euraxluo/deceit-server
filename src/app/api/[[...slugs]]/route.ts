@@ -2,10 +2,12 @@ import { Elysia } from 'elysia'
 import { swagger } from '@elysiajs/swagger'
 import { ContractService } from '@/services/contract'
 import { GameService } from '@/services/game'
-import { ApiResponse, AgentListResponse, RoomView } from '@/types'
+import { ApiResponse, AgentListResponse, RoomView, CreateAgentRequest } from '@/types'
+import { StorageService } from '@/services/storage'
 
 const contractService = new ContractService()
 const gameService = GameService.getInstance()
+const storageService = new StorageService()
 
 const app = new Elysia({ prefix: '/api' })
     .use(swagger({
@@ -17,6 +19,45 @@ const app = new Elysia({ prefix: '/api' })
         }
     }))
     
+    // 创建Agent
+    .post("/agent/create", async ({ body }: { body: CreateAgentRequest }): Promise<ApiResponse<{ success: boolean }>> => {
+        try {
+            const { agentId, name, avatar, prompts } = body
+            await storageService.saveAgent({
+                agentId,
+                name,
+                avatar: avatar || null,
+                status: '1',
+                statusName: '在线',
+                matchStartTime: null,
+                winCount: 0,
+                gameCount: 0,
+                score: 0,
+                prompts
+            })
+            return {
+                info: { 
+                    ok: true,
+                    msg: null,
+                    code: null,
+                    redirectUrl: null
+                },
+                data: { success: true }
+            }
+        } catch (error) {
+            console.error('[Agent] 创建Agent失败:', error)
+            return {
+                info: {
+                    ok: false,
+                    msg: '创建Agent失败',
+                    code: 'CREATE_AGENT_ERROR',
+                    redirectUrl: null
+                },
+                data: { success: false }
+            }
+        }
+    })
+
     // 1. 从链上读取Agent列表
     .get("/agent/list", async (): Promise<ApiResponse<AgentListResponse>> => {
         try {

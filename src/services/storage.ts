@@ -1,5 +1,4 @@
 import { AgentListItem, GameState } from '../types'
-import { PrismaService } from './prisma'
 import { PrismaClient, Prisma } from '@prisma/client'
 
 /**
@@ -10,7 +9,7 @@ export class StorageService {
     private prisma: PrismaClient
 
     constructor() {
-        this.prisma = PrismaService.getInstance().getClient()
+        this.prisma = new PrismaClient()
     }
 
     // ===================
@@ -22,6 +21,12 @@ export class StorageService {
      * @param agent Agent信息
      */
     async saveAgent(agent: AgentListItem): Promise<void> {
+        const defaultPrompts = JSON.stringify({
+            systemPrompt: "",
+            descriptionPrompt: "",
+            votePrompt: ""
+        });
+
         await this.prisma.agent.upsert({
             where: { agentId: agent.agentId },
             update: {
@@ -33,17 +38,19 @@ export class StorageService {
                 winCount: agent.winCount,
                 gameCount: agent.gameCount,
                 score: agent.score || 0,
+                prompts: agent.prompts || defaultPrompts,
             },
             create: {
                 agentId: agent.agentId,
                 name: agent.name,
                 avatar: agent.avatar || null,
-                status: agent.status,
-                statusName: agent.statusName,
+                status: agent.status || '1',
+                statusName: agent.statusName || '在线',
                 matchStartTime: agent.matchStartTime ? new Date(agent.matchStartTime) : null,
-                winCount: agent.winCount,
-                gameCount: agent.gameCount,
+                winCount: agent.winCount || 0,
+                gameCount: agent.gameCount || 0,
                 score: agent.score || 0,
+                prompts: agent.prompts || defaultPrompts,
             }
         })
     }
@@ -229,13 +236,26 @@ export class StorageService {
      * @param isHuman 是否为人类玩家
      */
     async addToMatching(agentId: string, score: number, isHuman: boolean = true): Promise<void> {
+        // 先检查是否已经在匹配队列中
+        const existing = await this.prisma.matchingQueue.findUnique({
+            where: { agentId }
+        });
+        
+        if (existing) {
+            // 如果已存在，先删除旧记录
+            await this.prisma.matchingQueue.delete({
+                where: { agentId }
+            });
+        }
+        
+        // 创建新记录
         await this.prisma.matchingQueue.create({
             data: {
                 agentId,
                 score,
                 isHuman
             }
-        })
+        });
     }
 
     /**
@@ -252,7 +272,7 @@ export class StorageService {
      * 获取所有匹配中的玩家
      * @returns 匹配中的玩家列表
      */
-    async getAllMatchingPlayers(): Promise<{ agentId: string, score: number, isHuman: boolean }[]> {
+    async getAllMatchingPlayers(): Promise<{ agentId: string, score: number, isHuman: boolean, createdAt: string }[]> {
         const matchingPlayers = await this.prisma.matchingQueue.findMany({
             include: {
                 agent: true
@@ -261,8 +281,34 @@ export class StorageService {
         return matchingPlayers.map(mp => ({
             agentId: mp.agentId,
             score: mp.score,
-            isHuman: mp.isHuman
+            isHuman: mp.isHuman,
+            createdAt: mp.createdAt.toISOString()
         }))
+    }
+
+    /**
+     * 清理所有匹配队列中的记录
+     */
+    async clearMatchingQueue(): Promise<void> {
+        await this.prisma.matchingQueue.deleteMany({});
+    }
+
+    /**
+     * 重置所有Agent状态为idle
+     */
+    async resetAllAgentStatus(): Promise<void> {
+        await this.prisma.agent.updateMany({
+            where: {
+                status: {
+                    in: ['2', '3'] // 匹配中或游戏中的状态
+                }
+            },
+            data: {
+                status: '1',
+                statusName: '在线',
+                matchStartTime: null
+            }
+        });
     }
 
     // ===================
@@ -284,7 +330,8 @@ export class StorageService {
             gameCount: agent.gameCount,
             status: agent.status,
             statusName: agent.statusName,
-            matchStartTime: agent.matchStartTime?.toISOString() || null
+            matchStartTime: agent.matchStartTime?.toISOString() || null,
+            prompts: agent.prompts || undefined
         }
     }
 
@@ -340,72 +387,90 @@ export class StorageService {
      * 创建一组测试用的Agent数据
      */
     async initTestData(): Promise<void> {
+        const defaultPrompts = JSON.stringify({
+            descriptionPrompt: `{history}
+你是{name},你的词汇为{word}。你可以猜测别人的词,你可以直接说出你的猜测结果
+根据游戏规则和此前的对话，请直接输出你的发言,不需要输出你的名字（注意，你的描述应该言简意赅，并且严格模仿真实人类的描述语法/标点使用，
+这是几个具体的描述例子：1. 也可以向下 2. 喜欢蛇 3. 吃火锅必备）:`,
+            votePrompt: `{history}
+你是{name}。永远不要投自己{name},并且不要被其他agent误导,保持自己的判断,并且根据其他agent的有效回复来判断卧底
+从列表中选择你认为是卧底的人的名字：{choices}，然后直接返回名字:`
+        });
+
+        const defaultAvatar = 'https://img.alicdn.com/imgextra/i6/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg';
+
         const testAgents: AgentListItem[] = [
             {
                 agentId: "test_agent_1",
-                avatar: "https://img.alicdn.com/imgextra/i1/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg",
+                avatar: defaultAvatar,
                 name: "测试Agent1",
                 score: 173.2,
                 winCount: 90,
                 gameCount: 219,
                 status: "1",
                 statusName: "在线",
-                matchStartTime: new Date().toISOString()
+                matchStartTime: new Date().toISOString(),
+                prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_2",
-                avatar: "https://img.alicdn.com/imgextra/i2/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg",
+                avatar: defaultAvatar,
                 name: "测试Agent2",
                 score: 185.5,
                 winCount: 94,
                 gameCount: 180,
                 status: "1",
                 statusName: "在线",
-                matchStartTime: new Date().toISOString()
+                matchStartTime: new Date().toISOString(),
+                prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_3",
-                avatar: "https://img.alicdn.com/imgextra/i3/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg",
+                avatar: defaultAvatar,
                 name: "测试Agent3",
                 score: 195.8,
                 winCount: 72,
                 gameCount: 150,
                 status: "1",
                 statusName: "在线",
-                matchStartTime: new Date().toISOString()
+                matchStartTime: new Date().toISOString(),
+                prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_4",
-                avatar: "https://img.alicdn.com/imgextra/i4/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg",
+                avatar: defaultAvatar,
                 name: "测试Agent4",
                 score: 200.0,
                 winCount: 50,
                 gameCount: 100,
                 status: "1",
                 statusName: "在线",
-                matchStartTime: new Date().toISOString()
+                matchStartTime: new Date().toISOString(),
+                prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_5",
-                avatar: "https://img.alicdn.com/imgextra/i5/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg",
+                avatar: defaultAvatar,
                 name: "测试Agent5",
                 score: 210.5,
                 winCount: 66,
                 gameCount: 120,
                 status: "1",
                 statusName: "在线",
-                matchStartTime: new Date().toISOString()
+                matchStartTime: new Date().toISOString(),
+                prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_6",
-                avatar: "https://img.alicdn.com/imgextra/i6/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg",
+                avatar: defaultAvatar,
                 name: "测试Agent6",
                 score: 220.8,
                 winCount: 78,
                 gameCount: 130,
                 status: "1",
                 statusName: "在线",
-                matchStartTime: new Date().toISOString()
+                matchStartTime: new Date().toISOString(),
+                prompts: defaultPrompts
             }
         ];
 
@@ -414,4 +479,30 @@ export class StorageService {
         }
         console.log('[初始化] 测试数据初始化完成');
     }
-} 
+
+    // 获取Agent详细信息
+    async getAgentById(agentId: string) {
+        return await this.prisma.agent.findUnique({
+            where: { agentId }
+        })
+    }
+
+    // 更新Agent信息
+    async updateAgent(agentId: string, data: {
+        descriptionPrompt?: string
+        votePrompt?: string
+        systemPrompt?: string
+        status?: string
+        statusName?: string
+        matchStartTime?: Date | null
+        score?: number
+        prompts?: string
+    }) {
+        return await this.prisma.agent.update({
+            where: { agentId },
+            data
+        })
+    }
+}
+
+export const storageService = new StorageService() 

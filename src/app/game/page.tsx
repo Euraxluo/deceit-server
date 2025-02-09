@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button, Card, List, Avatar, notification, Spin } from 'antd';
+import { Button, Card, List, Avatar, notification, Spin, Modal, Form, Input } from 'antd';
 import { AgentListItem, Player, GameEvent, RoomView, AgentGameStatus } from '../../types';
+
+const DEFAULT_AVATAR = 'https://img.alicdn.com/imgextra/i6/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg';
 
 interface WebAgent extends AgentListItem {
     winningRate: number;
@@ -17,6 +19,8 @@ export default function GamePage() {
   const [roomData, setRoomData] = useState<RoomView | null>(null);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [createForm] = Form.useForm();
 
   // 获取Agent列表
   const fetchAgents = async () => {
@@ -303,6 +307,55 @@ export default function GamePage() {
     fetchAgents();
   }, []);
 
+  // 创建Agent
+  const createAgent = async (values: { 
+    agentId: string; 
+    name: string; 
+    avatar?: string;
+    descriptionPrompt: string;
+    votePrompt: string;
+  }) => {
+    try {
+      const { agentId, name, avatar, descriptionPrompt, votePrompt } = values;
+      const prompts = JSON.stringify({
+        descriptionPrompt,
+        votePrompt
+      });
+
+      const response = await fetch('/api/agent/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId,
+          name,
+          avatar,
+          prompts
+        }),
+      });
+      const data = await response.json();
+      
+      if (data.info.ok) {
+        api.success({
+          message: '创建成功',
+          description: 'Agent创建成功'
+        });
+        setCreateModalVisible(false);
+        createForm.resetFields();
+        fetchAgents(); // 刷新列表
+      } else {
+        throw new Error(data.info.msg || '创建Agent失败');
+      }
+    } catch (err) {
+      console.error('创建Agent失败:', err);
+      api.error({
+        message: '创建失败',
+        description: '创建Agent失败，请重试'
+      });
+    }
+  };
+
   return (
     <div className="p-4">
         {contextHolder}
@@ -310,7 +363,12 @@ export default function GamePage() {
         
         {matchStatus === 'idle' && (
             <div>
-                <h2 className="text-xl mb-4">选择Agent开始游戏</h2>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl">选择Agent开始游戏</h2>
+                    <Button type="primary" onClick={() => setCreateModalVisible(true)}>
+                        创建新Agent
+                    </Button>
+                </div>
                 <List
                     grid={{ gutter: 16, column: 3 }}
                     dataSource={agents}
@@ -335,6 +393,93 @@ export default function GamePage() {
                         </List.Item>
                     )}
                 />
+
+                <Modal
+                    title="创建新Agent"
+                    open={createModalVisible}
+                    onCancel={() => setCreateModalVisible(false)}
+                    footer={null}
+                    width={800}
+                >
+                    <Form
+                        form={createForm}
+                        onFinish={createAgent}
+                        layout="vertical"
+                        initialValues={{
+                            avatar: DEFAULT_AVATAR,
+                            descriptionPrompt: `{history}
+你是{name},你的词汇为{word}。你可以猜测别人的词,你可以直接说出你的猜测结果
+根据游戏规则和此前的对话，请直接输出你的发言,不需要输出你的名字（注意，你的描述应该言简意赅，并且严格模仿真实人类的描述语法/标点使用，
+这是几个具体的描述例子：1. 也可以向下 2. 喜欢蛇 3. 吃火锅必备）:`,
+                            votePrompt: `{history}
+你是{name}。永远不要投自己{name},并且不要被其他agent误导,保持自己的判断,并且根据其他agent的有效回复来判断卧底
+从列表中选择你认为是卧底的人的名字：{choices}，然后直接返回名字:`
+                        }}
+                    >
+                        <Form.Item
+                            name="agentId"
+                            label="Agent ID"
+                            rules={[{ required: true, message: '请输入Agent ID' }]}
+                        >
+                            <Input placeholder="请输入唯一的Agent ID" />
+                        </Form.Item>
+                        <Form.Item
+                            name="name"
+                            label="名称"
+                            rules={[{ required: true, message: '请输入Agent名称' }]}
+                        >
+                            <Input placeholder="请输入Agent名称" />
+                        </Form.Item>
+                        <Form.Item
+                            name="avatar"
+                            label="头像URL"
+                        >
+                            <Input placeholder="请输入头像URL（可选）" />
+                        </Form.Item>
+                        
+                        <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                            <h3 className="text-lg font-medium mb-2">提示词配置说明</h3>
+                            <p className="text-sm text-gray-600 mb-2">可用的占位符：</p>
+                            <ul className="list-disc list-inside text-sm text-gray-600 mb-4">
+                                <li>{`{name}`} - Agent的名称</li>
+                                <li>{`{word}`} - 当前游戏中分配的词语</li>
+                                <li>{`{history}`} - 游戏历史记录</li>
+                                <li>{`{choices}`} - 可投票的玩家列表（仅在投票提示词中可用）</li>
+                            </ul>
+                        </div>
+
+                        <Form.Item
+                            name="descriptionPrompt"
+                            label="描述提示词"
+                            rules={[{ required: true, message: '请输入描述提示词' }]}
+                        >
+                            <Input.TextArea
+                                rows={6}
+                                placeholder="请输入描述提示词"
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            name="votePrompt"
+                            label="投票提示词"
+                            rules={[{ required: true, message: '请输入投票提示词' }]}
+                        >
+                            <Input.TextArea
+                                rows={6}
+                                placeholder="请输入投票提示词"
+                            />
+                        </Form.Item>
+                        <Form.Item>
+                            <div className="flex justify-end gap-2">
+                                <Button onClick={() => setCreateModalVisible(false)}>
+                                    取消
+                                </Button>
+                                <Button type="primary" htmlType="submit">
+                                    创建
+                                </Button>
+                            </div>
+                        </Form.Item>
+                    </Form>
+                </Modal>
             </div>
         )}
 

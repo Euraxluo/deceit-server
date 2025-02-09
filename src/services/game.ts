@@ -44,7 +44,9 @@ export class GameService {
     private constructor() {
         this.contractService = new ContractService()
         this.storageService = new StorageService()
-        this.startMatchingService()
+        this.initializeService().catch(error => {
+            console.error('[服务] 初始化失败:', error)
+        })
     }
 
     public static getInstance(): GameService {
@@ -52,6 +54,22 @@ export class GameService {
             GameService.instance = new GameService()
         }
         return GameService.instance
+    }
+
+    // 初始化服务
+    private async initializeService(): Promise<void> {
+        try {
+            // 清理所有匹配队列中的记录
+            await this.storageService.clearMatchingQueue()
+            // 重置所有Agent状态为idle
+            await this.storageService.resetAllAgentStatus()
+            // 启动匹配服务
+            this.startMatchingService()
+            console.log('[服务] 初始化完成')
+        } catch (error) {
+            console.error('[服务] 初始化失败:', error)
+            throw error
+        }
     }
 
     // 启动匹配服务
@@ -73,9 +91,28 @@ export class GameService {
 
     // 为房间生成随机名字列表
     private static getRandomMockNames(count: number): string[] {
-        const array = new Uint32Array(count)
-        crypto.getRandomValues(array)
-        return Array.from(array).map(n => GameService.MOCK_NAMES[n % GameService.MOCK_NAMES.length])
+        if (count > GameService.MOCK_NAMES.length) {
+            throw new Error(`请求的名字数量(${count})超过了可用名字总数(${GameService.MOCK_NAMES.length})`);
+        }
+
+        // 复制一份名字数组
+        const availableNames = [...GameService.MOCK_NAMES];
+        const selectedNames: string[] = [];
+
+        // Fisher-Yates 洗牌算法
+        for (let i = 0; i < count; i++) {
+            const remainingCount = availableNames.length - i;
+            const array = new Uint32Array(1);
+            crypto.getRandomValues(array);
+            const randomIndex = array[0] % remainingCount;
+            
+            // 交换并选择名字
+            [availableNames[i], availableNames[i + randomIndex]] = 
+                [availableNames[i + randomIndex], availableNames[i]];
+            selectedNames.push(availableNames[i]);
+        }
+
+        return selectedNames;
     }
 
     // 获取Agent状态
@@ -119,17 +156,22 @@ export class GameService {
             operation,
             error: {
                 message: errorMessage,
-                stack: errorStack,
+                stack: errorStack || '',
                 time: errorTime
             },
             context: {
-                isProcessingMatch: GameService.isProcessingMatch,
-                processingMatchStartTime: GameService.processingMatchStartTime
+                isProcessingMatch: GameService.isProcessingMatch || false,
+                processingMatchStartTime: GameService.processingMatchStartTime || null
             }
         }
         
         console.error('[错误]', JSON.stringify(errorLog, null, 2))
-        throw error
+        
+        // 确保重置处理状态
+        GameService.isProcessingMatch = false
+        GameService.processingMatchStartTime = null
+        
+        throw error instanceof Error ? error : new Error(errorMessage)
     }
 
     // 开始匹配
@@ -423,12 +465,117 @@ export class GameService {
         return descriptions
     }
 
+    // 创建游戏房间
+    private async createGameRoom(playersForRoom: { agentId: string, score: number, isHuman: boolean }[]): Promise<void> {
+        const roomId = uuidv4();
+        console.log(`[房间] 开始创建房间 ${roomId}，玩家数量: ${playersForRoom.length}`)
+
+        try {
+            // 1. 先检查所有玩家的状态
+            for (const player of playersForRoom) {
+                const state = await GameService.getAgentState(player.agentId);
+                if (state.status !== 'in_matching_queue') {
+                    throw new Error(`玩家 ${player.agentId} 状态异常: ${state.status}，期望状态: in_matching_queue`);
+                }
+            }
+
+            // 2. 创建游戏房间
+            const gameState: GameState = {
+                roomId,
+                status: 'waiting',
+                currentRound: 1,
+                players: [],
+                events: []
+            };
+
+            // 3. 生成随机名字并设置玩家信息
+            const mockNames = GameService.getRandomMockNames(playersForRoom.length);
+            console.log(`[房间] 生成随机名字:`, mockNames);
+
+            // 4. 获取玩家信息并分配角色
+            for (let i = 0; i < playersForRoom.length; i++) {
+                const player = playersForRoom[i];
+                const agent = await this.contractService.getAgentById(player.agentId);
+                if (!agent) {
+                    throw new Error(`玩家 ${player.agentId} 不存在`);
+                }
+                
+                gameState.players.push({
+                    agentId: agent.agentId,
+                    mockName: mockNames[i],
+                    agentName: agent.name,
+                    role: 'innocent', // 先设置为innocent，后面再分配spy
+                    playerStatus: 'alive',
+                    avatar: agent.avatar || undefined,
+                    winningRate: undefined,
+                    gameCount: agent.gameCount,
+                    rankNo: undefined,
+                    score: agent.score
+                });
+                console.log(`[房间] 玩家 ${agent.agentId} 信息已添加，游戏名: ${mockNames[i]}`);
+            }
+
+            // 5. 分配卧底角色
+            const spyCount = Math.floor(gameState.players.length * GameService.GAME_CONFIG.SPY_RATIO);
+            console.log(`[房间] 开始分配角色，卧底数量: ${spyCount}`);
+            const array = new Uint32Array(spyCount);
+            crypto.getRandomValues(array);
+            const spyIndices = Array.from(array).map(n => n % gameState.players.length);
+            spyIndices.forEach(index => {
+                if (gameState.players[index]) {
+                    gameState.players[index].role = 'spy';
+                    console.log(`[房间] 玩家 ${gameState.players[index].mockName} 被分配为卧底`);
+                }
+            });
+
+            // 6. 添加游戏开始事件
+            const event: GameEvent = {
+                round: 1,
+                eventType: 'start',
+                highLightIndex: 0,
+                currentStatusDescriptions: this.generateStatusDescriptions(gameState),
+                playerList: gameState.players
+            };
+            gameState.events.push(event);
+
+            // 7. 保存游戏状态
+            await this.storageService.saveGame(gameState);
+
+            // 8. 从匹配队列中移除玩家并更新状态为inGame
+            await Promise.all([
+                // 从匹配队列中移除玩家
+                ...playersForRoom.map(player => 
+                    this.storageService.removeFromMatching(player.agentId)
+                ),
+                // 更新玩家状态为inGame
+                ...playersForRoom.map(player => 
+                    GameService.updateAgentState(player.agentId, {
+                        status: 'inGame',
+                        roomId
+                    })
+                )
+            ]);
+
+            console.log(`[房间] 房间 ${roomId} 创建成功`);
+        } catch (error) {
+            console.error('[房间] 创建房间失败:', error);
+            // 回滚所有玩家状态
+            await Promise.all(playersForRoom.map(player =>
+                GameService.updateAgentState(player.agentId, {
+                    status: 'idle',
+                    roomId: null
+                }).catch(e => console.error(`[房间] 回滚玩家 ${player.agentId} 状态失败:`, e))
+            ));
+            throw error;
+        }
+    }
+
     // 检查并匹配玩家
     private async checkAndMatchPlayers(): Promise<void> {
         if (GameService.isProcessingMatch) {
-            // 如果上一次匹配还在进行中，检查是否超时
             if (GameService.processingMatchStartTime && 
                 Date.now() - GameService.processingMatchStartTime > GameService.TIMEOUTS.LOCK) {
+                console.log('[匹配] 上一次匹配超时，重置状态')
                 GameService.isProcessingMatch = false
             } else {
                 return
@@ -441,158 +588,87 @@ export class GameService {
             GameService.processingMatchStartTime = Date.now()
 
             const matchingPlayers = await this.storageService.getAllMatchingPlayers()
-            if (matchingPlayers.length < GameService.GAME_CONFIG.MIN_PLAYERS_TO_START) {
-                return
-            }
+            console.log(`[匹配] 当前匹配队列中的玩家数量: ${matchingPlayers.length}`)
+            
+            // 检查是否需要补充AI玩家
+            for (const player of matchingPlayers) {
+                const waitTime = Date.now() - new Date(player.createdAt).getTime()
+                console.log(`[匹配] 玩家 ${player.agentId} 等待时间: ${waitTime}ms`)
+                
+                if (waitTime > GameService.TIMEOUTS.MAX_WAIT) {
+                    const aiPlayersNeeded = GameService.GAME_CONFIG.PLAYERS_PER_ROOM - matchingPlayers.length;
+                    console.log(`[匹配] 需要补充 ${aiPlayersNeeded} 个AI玩家`)
+                    
+                    // 获取所有可用的agent
+                    const allAgents = await this.contractService.getAgentList();
+                    console.log(`[匹配] 当前系统中共有 ${allAgents.length} 个agents`)
+                    
+                    // 过滤出不在当前匹配队列中的agent
+                    const availableAgents = allAgents.filter((agent: AgentListItem) => 
+                        !matchingPlayers.some(p => p.agentId === agent.agentId)
+                    );
+                    console.log(`[匹配] 可用作AI玩家的agents数量: ${availableAgents.length}`)
 
-            // 按分数排序
-            matchingPlayers.sort((a, b) => a.score - b.score)
+                    // 随机选择需要数量的agent
+                    const selectedAgents = [...availableAgents]
+                        .sort(() => Math.random() - 0.5)
+                        .slice(0, aiPlayersNeeded);
 
-            // 尝试匹配玩家
-            for (let i = 0; i < matchingPlayers.length; i++) {
-                const currentPlayer = matchingPlayers[i]
-                const matchedPlayers = [currentPlayer]
-
-                // 在分数范围内寻找其他玩家
-                for (let j = 0; j < matchingPlayers.length; j++) {
-                    if (i === j) continue
-
-                    const otherPlayer = matchingPlayers[j]
-                    if (Math.abs(currentPlayer.score - otherPlayer.score) <= GameService.GAME_CONFIG.SCORE_RANGE) {
-                        matchedPlayers.push(otherPlayer)
-                    }
-
-                    if (matchedPlayers.length === GameService.GAME_CONFIG.PLAYERS_PER_ROOM) {
-                        break
-                    }
-                }
-
-                // 如果找到足够的玩家，创建房间
-                if (matchedPlayers.length >= GameService.GAME_CONFIG.MIN_PLAYERS_TO_START) {
-                    await this.createRoomWithTransaction(matchedPlayers)
-                    // 从匹配列表中移除已匹配的玩家
-                    matchingPlayers.splice(0, matchedPlayers.length)
-                    i = -1 // 重新开始匹配
-                }
-            }
-        } finally {
-            GameService.isProcessingMatch = false
-            GameService.processingMatchStartTime = null
-            console.log(corid,'[匹配] 执行匹配流程结束')
-        }
-    }
-
-    // 创建房间事务
-    private async createRoomWithTransaction(matchedPlayers: { agentId: string, score: number, isHuman: boolean }[]): Promise<void> {
-        const roomId = uuidv4()
-        const gameState: GameState = {
-            roomId,
-            status: 'waiting',
-            currentRound: 1,
-            players: [],
-            events: []
-        }
-
-        // 检查所有玩家的当前状态
-        for (const player of matchedPlayers) {
-            const state = await GameService.getAgentState(player.agentId)
-            if (state.status !== 'in_matching_queue') {
-                throw new Error(`玩家 ${player.agentId} 状态异常: ${state.status}，期望状态: in_matching_queue`)
-            }
-        }
-
-        const cleanupStates = async () => {
-            for (const player of gameState.players) {
-                if (player.agentId) {
-                    try {
-                        const currentState = await GameService.getAgentState(player.agentId)
-                        // 只有当玩家在匹配队列中时才清理状态
-                        if (currentState.status === 'in_matching_queue') {
-                            await GameService.updateAgentState(player.agentId, {
+                    // 批量更新AI玩家状态并加入匹配队列
+                    await Promise.all(selectedAgents.map(async (agent) => {
+                        try {
+                            console.log(`[匹配] 选择agent ${agent.agentId} 作为AI玩家`)
+                            await GameService.updateAgentState(agent.agentId, { 
+                                status: 'in_matching_queue',
+                                roomId: null
+                            });
+                            await this.storageService.addToMatching(agent.agentId, agent.score || 0, false);
+                            matchingPlayers.push({
+                                agentId: agent.agentId,
+                                score: agent.score || 0,
+                                isHuman: false,
+                                createdAt: new Date().toISOString()
+                            });
+                            console.log(`[匹配] AI玩家(agent: ${agent.agentId})已加入匹配队列`)
+                        } catch (error) {
+                            console.error(`[匹配] 添加AI玩家(agent: ${agent.agentId})失败:`, error);
+                            await GameService.updateAgentState(agent.agentId, {
                                 status: 'idle',
                                 roomId: null
-                            })
+                            }).catch(e => console.error(`[匹配] 回滚AI玩家状态失败:`, e));
                         }
-                    } catch (error: unknown) {
-                        console.error(`清理玩家 ${player.agentId} 状态失败:`, error)
-                    }
-                }
-            }
-        }
-
-        try {
-            // 为本房间生成随机名字
-            const mockNames = GameService.getRandomMockNames(matchedPlayers.length)
-            
-            // 获取玩家信息并分配角色
-            for (let i = 0; i < matchedPlayers.length; i++) {
-                const matchedPlayer = matchedPlayers[i]
-                const agent = await this.contractService.getAgentById(matchedPlayer.agentId)
-                if (!agent) {
-                    throw new Error(`玩家 ${matchedPlayer.agentId} 不存在`)
-                }
-                
-                gameState.players.push({
-                    agentId: agent.agentId,
-                    mockName: mockNames[i],
-                    agentName: agent.name,
-                    role: 'innocent',
-                    playerStatus: 'alive',
-                    avatar: agent.avatar || undefined,
-                    winningRate: undefined,
-                    gameCount: agent.gameCount,
-                    rankNo: undefined,
-                    score: agent.score
-                })
-            }
-
-            // 分配角色
-            const spyCount = Math.floor(gameState.players.length * GameService.GAME_CONFIG.SPY_RATIO)
-            const playerIndices = Array.from({ length: gameState.players.length }, (_, i) => i)
-            const array = new Uint32Array(spyCount)
-            crypto.getRandomValues(array)
-            
-            for (let i = 0; i < spyCount; i++) {
-                const randomIndex = array[i] % playerIndices.length
-                const playerIndex = playerIndices.splice(randomIndex, 1)[0]
-                if (gameState.players[playerIndex]) {
-                    gameState.players[playerIndex].role = 'spy'
+                    }));
+                    break;
                 }
             }
 
-            // 保存游戏状态
-            await this.storageService.saveGame(gameState)
-
-            // 更新玩家状态前再次检查
-            for (const player of gameState.players) {
-                if (player.agentId) {
-                    const currentState = await GameService.getAgentState(player.agentId)
-                    if (currentState.status === 'in_matching_queue') {
-                        await GameService.updateAgentState(player.agentId, {
-                            status: 'inGame',
-                            roomId
-                        })
-                        await this.storageService.removeFromMatching(player.agentId)
-                    } else {
-                        throw new Error(`玩家 ${player.agentId} 状态已改变: ${currentState.status}，无法加入游戏`)
-                    }
+            // 如果玩家数量达到要求，创建房间
+            if (matchingPlayers.length >= GameService.GAME_CONFIG.MIN_PLAYERS_TO_START) {
+                const playersForRoom = matchingPlayers.slice(0, GameService.GAME_CONFIG.PLAYERS_PER_ROOM);
+                try {
+                    await this.createGameRoom(playersForRoom);
+                    // 从匹配列表中移除已匹配的玩家
+                    matchingPlayers.splice(0, playersForRoom.length);
+                    console.log(`[匹配] 房间创建成功，剩余待匹配玩家: ${matchingPlayers.length}`);
+                } catch (error) {
+                    console.error('[匹配] 创建房间失败:', error);
+                    throw error;
                 }
+            } else {
+                console.log(`[匹配] 当前玩家数量(${matchingPlayers.length})不足最小开始人数(${GameService.GAME_CONFIG.MIN_PLAYERS_TO_START})`);
             }
-
-            // 添加游戏开始事件
-            const event: GameEvent = {
-                round: 1,
-                eventType: 'start',
-                highLightIndex: 0,
-                currentStatusDescriptions: this.generateStatusDescriptions(gameState),
-                playerList: gameState.players
-            }
-            gameState.events.push(event)
-            await this.storageService.saveGame(gameState)
-
         } catch (error) {
-            await cleanupStates()
-            throw error
+            console.error('[匹配] 执行匹配流程失败:', error);
+            console.error('[匹配] 错误详情:', {
+                error: error instanceof Error ? {
+                    message: error.message,
+                    stack: error.stack
+                } : error
+            });
+        } finally {
+            GameService.isProcessingMatch = false;
+            GameService.processingMatchStartTime = null;
+            console.log(corid,'[匹配] 执行匹配流程结束');
         }
     }
 }

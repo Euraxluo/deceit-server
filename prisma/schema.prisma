@@ -28,6 +28,9 @@ model Agent {
   gameCount       Int      @default(0)   // 游戏次数
   score           Float?                 // 当前分数
   
+  // Agent的提示词配置(JSON格式)
+  prompts         String   @db.Text    // 提示词配置，包含各种游戏场景的提示词模板
+  
   // 关联关系
   players         Player[]              // 该Agent参与的所有游戏中的玩家记录
   matchingQueue   MatchingQueue?        // 匹配队列记录

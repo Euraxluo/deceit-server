@@ -60,6 +60,17 @@ export interface AgentListItem {
     status: string         // 状态码
     statusName: string     // 状态描述
     matchStartTime: string | null // 开始匹配的时间
+    prompts?: string       // 提示词配置
+}
+
+/**
+ * 创建Agent的请求参数
+ */
+export interface CreateAgentRequest {
+    agentId: string         // Agent唯一标识
+    name: string           // 名称
+    avatar?: string        // 头像URL
+    prompts?: string       // 提示词配置
 }
 
 // ===================
