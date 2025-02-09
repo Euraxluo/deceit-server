@@ -1,114 +1,89 @@
-import { Game, AgentListItem } from '../types'
+import { GameState, AgentListItem } from '../types'
 import { StorageService } from './storage'
 
+/**
+ * 合约服务类
+ * 负责处理链上只读查询和管理员特权操作
+ */
 export class ContractService {
+    /** 存储服务实例 */
     private storageService: StorageService
 
     constructor() {
         this.storageService = new StorageService()
     }
 
-    async initTestData(): Promise<void> {
-        await this.storageService.initTestData()
-    }
+    // =================== 链上只读查询 ===================
 
+    /**
+     * 获取所有Agent列表
+     * @returns {Promise<AgentListItem[]>} Agent列表
+     */
     async getAgentList(): Promise<AgentListItem[]> {
-        // TODO: 从链上获取agent列表
         return this.storageService.getAllAgents()
     }
 
+    /**
+     * 根据ID获取指定Agent
+     * @param {string} agentId Agent的唯一标识
+     * @returns {Promise<AgentListItem | null>} Agent信息，不存在时返回null
+     */
     async getAgentById(agentId: string): Promise<AgentListItem | null> {
         return this.storageService.getAgent(agentId)
     }
 
-    async getAllAgents(): Promise<AgentListItem[]> {
-        return await this.storageService.getAllAgents()
+    /**
+     * 获取游戏状态
+     * @param {string} gameId 游戏ID
+     * @returns {Promise<GameState | null>} 游戏状态，不存在时返回null
+     */
+    async getGame(gameId: string): Promise<GameState | null> {
+        return this.storageService.getGame(gameId)
     }
 
-    // 更新agent状态
-    async updateAgentStatus(agentId: string, status: string, statusName: string): Promise<void> {
-        await this.storageService.updateAgentStatus(agentId, status, statusName)
-    }
+    // =================== 管理员特权操作 ===================
 
-    async getGameHistory(gameId: string): Promise<Game | null> {
-        return this.storageService.getGameHistory(gameId)
-    }
-
-    async getPlayerScore(address: string): Promise<number> {
-        const agents = await this.storageService.getAllAgents()
-        const agent = agents.find(a => a.link?.includes(address))
-        return agent?.score || 0
-    }
-
-    // 玩家管理
-    async createPlayer(name: string, prompt: string): Promise<void> {
-        const agents = await this.storageService.getAllAgents()
-        const newAgent: AgentListItem = {
-            agentId: (agents.length + 1).toString(),
-            name,
-            avatar: null,
-            score: 0,
-            rank: null,
-            gameCount: 0,
-            winningRate: 0,
-            spyWinningRate: 0,
-            status: "1",
-            statusName: "在线",
-            onlineStatus: null,
-            onlineStatusName: "空闲",
-            matchStartTime: null,
-            link: null,
-            description: prompt,
-            agentType: "cnAgent",
-            agentTypeName: "中文",
-            modelName: null,
-            rankScope: "青铜",
-            competitionId: 2,
-            competitionName: "日常中文比赛",
-            nonDisplayableReason: null,
-            displayable: true
-        }
-        await this.storageService.saveAgent(newAgent)
-    }
-
-    async updatePlayerPrompt(playerId: string, prompt: string): Promise<void> {
-        const agents = await this.storageService.getAllAgents()
-        const agent = agents.find(a => a.link === playerId)
-        if (agent) {
-            agent.description = prompt
-            await this.storageService.saveAgent(agent)
-        }
-    }
-    
-    // 游戏管理
-    async startGame(players: string[]): Promise<void> {
-        const game: Game = {
-            id: Math.random().toString(36).substring(7),
-            name: `Game-${Date.now()}`,
-            responses: '',
-            players,
-            winners: []
-        }
-        await this.storageService.saveGameHistory(game)
-    }
-
+    /**
+     * 结算游戏（管理员特权操作）
+     * @param {string} gameId 游戏ID
+     * @param {string[]} winners 获胜者ID列表
+     * @description 更新游戏状态为结束，记录获胜者，并更新玩家分数
+     */
     async concludeGame(gameId: string, winners: string[]): Promise<void> {
-        const game = await this.storageService.getGameHistory(gameId)
+        const game = await this.storageService.getGame(gameId)
         if (game) {
-            game.winners = winners
-            await this.storageService.saveGameHistory(game)
+            // 更新游戏状态
+            game.status = 'finished'
+            game.endGameData = {
+                winnerRole: 'spy',
+                winners: game.players.filter(p => winners.includes(p.agentId || '')),
+                scores: []
+            }
+            await this.storageService.saveGame(game)
 
-            // 更新玩家分数
-            const agents = await this.storageService.getAllAgents()
+            // 更新获胜者分数（管理员特权操作）
             for (const winner of winners) {
-                const agent = agents.find(a => a.link === winner)
+                const agent = await this.storageService.getAgent(winner)
                 if (agent) {
-                    agent.score += 10
-                    agent.gameCount += 1
-                    agent.winningRate = (agent.score / agent.gameCount) * 100
-                    await this.storageService.saveAgent(agent)
+                    const updatedAgent: AgentListItem = {
+                        ...agent,
+                        score: agent.score + 10,
+                        gameCount: agent.gameCount + 1,
+                        winCount: agent.winCount + 1
+                    }
+                    await this.storageService.saveAgent(updatedAgent)
                 }
             }
         }
+    }
+
+    // =================== 链上数据模拟 ===================
+
+    /**
+     * 初始化测试数据
+     * @description 模拟链上已经存在的Agent数据
+     */
+    async initTestData(): Promise<void> {
+        await this.storageService.initTestData()
     }
 } 

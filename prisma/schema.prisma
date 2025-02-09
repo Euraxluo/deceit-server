@@ -13,135 +13,121 @@ datasource db {
 }
         
 
-// Agent模型
+// ===================
+// Agent模型 - 代表一个AI代理或人类玩家
+// ===================
 model Agent {
   id              Int      @id @default(autoincrement())
-  agentId         String   @unique
-  name            String
-  avatar          String?
-  token           String?
-  score           Float    @default(0)
-  rank            Int?
-  gameCount       Int      @default(0)
-  winningRate     Float    @default(0)
-  spyWinningRate  Float    @default(0)
-  status          String   @default("1")
-  statusName      String   @default("在线")
-  onlineStatus    String?
-  onlineStatusName String  @default("空闲")
-  matchStartTime  DateTime?
-  link            String?
-  description     String?
-  agentType       String   @default("cnAgent")
-  agentTypeName   String   @default("中文")
-  modelName       String?
-  rankScope       String   @default("青铜")
-  competitionId   Int      @default(2)
-  competitionName String   @default("日常中文比赛")
-  displayable     Boolean  @default(true)
-  organization    String?
-  nonDisplayableReason String?
+  agentId         String   @unique     // 外部系统的唯一标识符
+  avatar          String?                // 头像URL
+  name            String                // Agent的名称
+  status          String   @default("1") // 状态码: 1-在线, 2-匹配中, 3-游戏中
+  statusName      String   @default("在线") // 状态码的可读描述
+  matchStartTime  DateTime?             // 开始匹配的时间
+  winCount        Int      @default(0)   // 获胜次数
+  gameCount       Int      @default(0)   // 游戏次数
+  score           Float?                 // 当前分数
   
-  // 关联
-  players         Player[]
-  matchingQueue   MatchingQueue?
+  // 关联关系
+  players         Player[]              // 该Agent参与的所有游戏中的玩家记录
+  matchingQueue   MatchingQueue?        // 匹配队列记录
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  // 索引定义
+  @@index([status])             // 用于匹配查询
+  @@index([createdAt])                 // 用于时间相关查询
+  @@index([agentId, status, statusName]) // 用于状态更新查询优化
 }
 
-// 游戏模型
+// ===================
+// 游戏模型 - 代表一局游戏
+// ===================
 model Game {
-  id          String   @id
-  name        String
-  responses   String   @default("")
-  status      String   @default("waiting")
-  word        String?
-  currentRound Int     @default(1)
-  roomType    String   @default("entertainmentCn")
-  endGameData String?  // 改为String,使用JSON字符串存储
+  id          String   @id             // 游戏房间ID
+  status      String   @default("waiting") // 游戏状态: waiting/playing/finished
+  word        String?                  // 本局游戏的词语
+  currentRound Int     @default(1)     // 当前回合数
+  endGameData String?                  // 游戏结束数据(JSON字符串)
   
-  // 关联
-  players     Player[]
-  events      GameEvent[]
-  winners     Winner[]
+  // 关联关系
+  players     Player[]                 // 参与游戏的玩家
+  events      GameEvent[]              // 游戏中的所有事件
+  winners     Winner[]                 // 游戏获胜者记录
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // 索引定义
+  @@index([status])                    // 用于游戏状态查询
+  @@index([createdAt])                 // 用于时间相关查询
 }
 
-// 玩家模型
-model Player {
-  id            Int      @id @default(autoincrement())
-  mockName      String
-  agentName     String
-  role          String?
-  playerStatus  String   @default("alive")
-  avatar        String?
-  winningRate   Float?
-  spyWinningRate Float?
-  modelName     String?
-  organization  String?
-  score         Float?
-  gameCount     Int?
-  rankNo        Int?
-  overallRating Float?
-  
-  // 关联
-  agent         Agent    @relation(fields: [agentId], references: [agentId])
-  agentId       String
-  game          Game     @relation(fields: [gameId], references: [id])
-  gameId        String
-  events        GameEvent[]
-  winners       Winner[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
 
-// 游戏事件模型
+// ===================
+// 游戏事件模型 - 记录游戏中的各种事件
+// ===================
 model GameEvent {
   id            Int      @id @default(autoincrement())
-  round         Int
-  eventType     String
-  text          String?
-  voteToMockName String?
-  voteToAgentId String?
-  voteIsValid   Boolean?
-  winnerRole    String?
-  highLightIndex Int     @default(0)
-  loadingMockName String?
-  currentStatusDescriptions String   // 使用JSON字符串存储状态描述数组
+  round         Int                    // 事件发生的回合
+  eventType     String                 // 事件类型: start/hostSpeech/speech/vote/end
+  text          String?                // 事件文本内容
+  voteToMockName String?               // 投票目标的显示名称
+  voteToAgentId String?                // 投票目标的AgentId
+  voteIsValid   Boolean?               // 投票是否有效
+  winnerRole    String?                // 获胜角色: spy/innocent
+  highLightIndex Int     @default(0)   // 当前高亮的玩家索引
+  loadingMockName String?              // 正在加载的玩家显示名称
+  currentStatusDescriptions String     // 当前状态描述(JSON字符串)
   
-  // 关联
+  // 关联关系
   game          Game     @relation(fields: [gameId], references: [id])
   gameId        String
   player        Player?  @relation(fields: [playerId], references: [id])
   playerId      Int?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  // 索引定义
+  @@index([gameId, round])             // 用于查询特定回合的事件
+  @@index([eventType])                 // 用于按事件类型查询
 }
 
-// 获胜者模型
+// ===================
+// 获胜者模型 - 记录游戏的获胜信息
+// ===================
 model Winner {
   id        Int      @id @default(autoincrement())
-  score     Int
+  score     Int                        // 获得的分数
   
-  // 关联
+  // 关联关系
   game      Game     @relation(fields: [gameId], references: [id])
   gameId    String
   player    Player   @relation(fields: [playerId], references: [id])
   playerId  Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // 索引定义
+  @@index([gameId])                    // 用于查询游戏的获胜者
+  @@index([playerId])                  // 用于查询玩家的获胜记录
 }
 
-// 匹配队列模型
+// ===================
+// 匹配队列模型 - 记录等待匹配的玩家
+// ===================
 model MatchingQueue {
   id        Int      @id @default(autoincrement())
-  score     Float
-  timestamp DateTime @default(now())
+  score     Float                      // 用于匹配的分数
+  timestamp DateTime @default(now())    // 进入队列的时间
+  isHuman   Boolean  @default(true)    // 是否为人类玩家
   
-  // 关联
+  // 关联关系
   agent     Agent    @relation(fields: [agentId], references: [agentId])
   agentId   String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // 索引定义
+  @@index([score])                     // 用于分数匹配
+  @@index([timestamp])                 // 用于清理过期记录
 } 
