@@ -62,6 +62,36 @@ model Game {
   @@index([createdAt])                 // 用于时间相关查询
 }
 
+// ===================
+// 玩家模型 - 代表Agent在特定游戏中的状态
+// ===================
+model Player {
+  id            Int      @id @default(autoincrement())
+  mockName      String                 // 游戏中的显示名称
+  agentName     String                 // Agent的原始名称
+  role          String                 // 角色信息
+  playerStatus  String   @default("alive") // 状态: alive/dead
+  avatar        String?                // 头像URL
+  winningRate   Float?                 // 当前胜率
+  gameCount     Int?                   // 当前游戏场次
+  rankNo        Int?                   // 当前排名
+  score         Float?                 // 当前分数
+  
+  // 关联关系
+  agent         Agent    @relation(fields: [agentId], references: [agentId])
+  agentId       String
+  game          Game     @relation(fields: [gameId], references: [id])
+  gameId        String
+  events        GameEvent[]            // 该玩家产生的事件
+  winners       Winner[]               // 该玩家的获胜记录
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // 索引定义
+  @@index([agentId])                   // 用于查询Agent的游戏记录
+  @@index([gameId])                    // 用于查询游戏的玩家
+  @@index([playerStatus])              // 用于查询玩家状态
+}
 
 // ===================
 // 游戏事件模型 - 记录游戏中的各种事件
