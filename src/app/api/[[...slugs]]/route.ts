@@ -28,7 +28,7 @@ const app = new Elysia({ prefix: '/api' })
                 name,
                 avatar: avatar || null,
                 status: '1',
-                statusName: '在线',
+                statusName: 'Online',
                 matchStartTime: null,
                 winCount: 0,
                 gameCount: 0,
@@ -45,11 +45,11 @@ const app = new Elysia({ prefix: '/api' })
                 data: { success: true }
             }
         } catch (error) {
-            console.error('[Agent] 创建Agent失败:', error)
+            console.error('[Agent] Failed to create agent:', error)
             return {
                 info: {
                     ok: false,
-                    msg: '创建Agent失败',
+                    msg: 'Failed to create agent',
                     code: 'CREATE_AGENT_ERROR',
                     redirectUrl: null
                 },
@@ -75,11 +75,11 @@ const app = new Elysia({ prefix: '/api' })
                 }
             }
         } catch (error) {
-            console.error('[Agent] 获取Agent列表失败:', error)
+            console.error('[Agent] Failed to get agent list:', error)
             return {
                 info: {
                     ok: false,
-                    msg: '获取Agent列表失败',
+                    msg: 'Failed to get agent list',
                     code: 'AGENT_LIST_ERROR',
                     redirectUrl: null
                 },
@@ -105,11 +105,11 @@ const app = new Elysia({ prefix: '/api' })
                 data: { success: true }
             }
         } catch (error) {
-            console.error('[Agent] 初始化测试数据失败:', error)
+            console.error('[Agent] Failed to initialize test data:', error)
             return {
                 info: {
                     ok: false,
-                    msg: '初始化测试数据失败',
+                    msg: 'Failed to initialize test data',
                     code: 'INIT_DATA_ERROR',
                     redirectUrl: null
                 },
@@ -122,20 +122,20 @@ const app = new Elysia({ prefix: '/api' })
     .post("/game/startMatch", async ({ body }: { body: { agentId: string } }): Promise<ApiResponse<{ success: boolean; message?: string; currentStatus?: string }>> => {
         try {
             const { agentId } = body
-            // 检查agent当前状态
+            // Check agent's current status
             const status = await gameService.checkMatchStatus(agentId)
             if (status.gameStatus === 'in_matching_queue' || status.gameStatus === 'inGame') {
-                console.log(`[匹配] Agent ${agentId} 已在匹配或游戏中`)
+                console.log(`[Matching] Agent ${agentId} is already in matching or game`)
                 return {
                     info: { 
                         ok: false,
-                        msg: 'Agent已在匹配或游戏中',
+                        msg: 'Agent is already in matching or game',
                         code: 'ALREADY_IN_GAME',
                         redirectUrl: null
                     },
                     data: { 
                         success: false,
-                        message: 'Agent已在匹配或游戏中',
+                        message: 'Agent is already in matching or game',
                         currentStatus: status.gameStatus
                     }
                 }
@@ -152,17 +152,17 @@ const app = new Elysia({ prefix: '/api' })
                 data: { success: true }
             }
         } catch (error) {
-            console.error('[匹配] 开始匹配失败:', error)
+            console.error('[Matching] Failed to start matching:', error)
             return {
                 info: {
                     ok: false,
-                    msg: '开始匹配失败',
+                    msg: 'Failed to start matching',
                     code: 'START_MATCH_ERROR',
                     redirectUrl: null
                 },
                 data: { 
                     success: false,
-                    message: error instanceof Error ? error.message : '未知错误'
+                    message: error instanceof Error ? error.message : 'Unknown error'
                 }
             }
         }
@@ -183,11 +183,11 @@ const app = new Elysia({ prefix: '/api' })
                 data: { success: true }
             }
         } catch (error) {
-            console.error('[匹配] 取消匹配失败:', error)
+            console.error('[Matching] Failed to cancel matching:', error)
             return {
                 info: {
                     ok: false,
-                    msg: '取消匹配失败',
+                    msg: 'Failed to cancel matching',
                     code: 'CANCEL_MATCH_ERROR',
                     redirectUrl: null
                 },
@@ -202,7 +202,7 @@ const app = new Elysia({ prefix: '/api' })
         try {
             const { agentId } = query
             const status = await gameService.checkMatchStatus(agentId)
-            console.log(`[匹配] Agent ${agentId} 的匹配状态: ${status.gameStatus}, 房间ID: ${status.roomId}`)
+            console.log(`[Matching] Agent ${agentId} 的匹配状态: ${status.gameStatus}, 房间ID: ${status.roomId}`)
             return {
                 info: { 
                     ok: true,
@@ -216,11 +216,11 @@ const app = new Elysia({ prefix: '/api' })
                 }
             }
         } catch (error) {
-            console.error('[匹配] 检查匹配状态失败:', error)
+            console.error('[Matching] 检查匹配状态失败:', error)
             return {
                 info: {
                     ok: false,
-                    msg: '检查匹配状态失败',
+                    msg: 'check match error',
                     code: 'CHECK_MATCH_ERROR',
                     redirectUrl: null
                 },
@@ -251,7 +251,7 @@ const app = new Elysia({ prefix: '/api' })
             return {
                 info: {
                     ok: false,
-                    msg: '获取房间信息失败',
+                    msg: 'failed to get room info',
                     code: 'GET_ROOM_ERROR',
                     redirectUrl: null
                 },
@@ -287,7 +287,7 @@ const app = new Elysia({ prefix: '/api' })
             return {
                 info: {
                     ok: false,
-                    msg: '获取Agent房间视图失败',
+                    msg: 'get agent room view error',
                     code: 'GET_AGENT_ROOM_ERROR',
                     redirectUrl: null
                 },
@@ -328,7 +328,7 @@ const app = new Elysia({ prefix: '/api' })
             return {
                 info: {
                     ok: false,
-                    msg: '处理游戏动作失败',
+                    msg: 'process game action error',
                     code: 'PROCESS_ACTION_ERROR',
                     redirectUrl: null
                 },

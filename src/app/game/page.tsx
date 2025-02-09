@@ -43,13 +43,13 @@ export default function GamePage() {
         }));
         setAgents(webAgents);
       } else {
-        throw new Error(data.info.msg || '获取Agent列表失败');
+        throw new Error(data.info.msg || 'get agent list failed');
       }
     } catch (err) {
       console.error('获取Agent列表失败:', err);
       api.error({
-        message: '获取失败',
-        description: '获取Agent列表失败，请稍后重试'
+        message: 'get agent list failed',
+        description: 'get agent list failed, please try again later'
       });
     }
   };
@@ -81,14 +81,14 @@ export default function GamePage() {
             // 区分不同类型的错误
             if (data.info.code === 'ALREADY_IN_GAME') {
                 api.warning({
-                    message: '无法匹配',
-                    description: data.info.msg || 'Agent已在匹配或游戏中'
+                    message: 'Cannot match',
+                    description: data.info.msg || 'Agent is already in matching or game'
                 });
                 setMatchStatus('idle');
             } else {
                 api.error({
-                    message: '匹配失败',
-                    description: data.info.msg || '开始匹配失败'
+                    message: 'Match failed',
+                    description: data.info.msg || 'Failed to start matching'
                 });
                 setMatchStatus('idle');
             }
@@ -98,10 +98,10 @@ export default function GamePage() {
     } catch (err) {
         console.error('开始匹配失败:', err);
         api.error({
-            message: '匹配失败',
-            description: '开始匹配失败，请重试'
+            message: 'Match failed',
+            description: 'Failed to start matching, please try again'
         });
-        handleMatchError('开始匹配失败，请重试');
+        handleMatchError('Failed to start matching, please try again');
     }
   };
 
@@ -109,8 +109,8 @@ export default function GamePage() {
   const cancelMatch = async () => {
     if (!currentAgentId) {
         api.error({
-            message: '操作失败',
-            description: '没有正在匹配的Agent'
+            message: 'Operation failed',
+            description: 'No agent is currently matching'
         });
         return;
     }
@@ -127,8 +127,8 @@ export default function GamePage() {
             setCurrentAgentId(null);
             setLoading(false);
             api.info({
-                message: '提示',
-                description: 'Agent已不在匹配队列中'
+                message: 'Notice',
+                description: 'Agent is no longer in the matching queue'
             });
             return;
         }
@@ -144,8 +144,8 @@ export default function GamePage() {
         const data = await response.json();
         if (data.info.ok) {
             api.success({
-                message: '成功',
-                description: '已取消匹配'
+                message: 'Success',
+                description: 'Matching has been canceled'
             });
             setMatchStatus('idle');
             setCurrentAgentId(null);
@@ -154,15 +154,15 @@ export default function GamePage() {
             await fetchAgents();
         } else {
             api.error({
-                message: '错误',
-                description: data.info.msg || '取消匹配失败'
+                message: 'Error',
+                description: data.info.msg || 'Failed to cancel matching'
             });
         }
     } catch (err) {
         console.error('取消匹配失败:', err);
         api.error({
-            message: '操作失败',
-            description: '取消匹配失败，请重试'
+            message: 'Operation failed',
+            description: 'Failed to cancel matching, please try again'
         });
     } finally {
         setLoading(false);
@@ -187,8 +187,8 @@ export default function GamePage() {
                 setCurrentAgentId(null);
                 setLoading(false);
                 api.info({
-                    message: '匹配已结束',
-                    description: 'Agent已不在匹配队列中'
+                    message: 'Match ended',
+                    description: 'Agent is no longer in the matching queue'
                 });
                 return;
             }
@@ -198,13 +198,13 @@ export default function GamePage() {
                 setMatchStatus('inGame');
                 fetchRoomData(data.data.roomId);
                 api.info({
-                    message: '匹配成功',
-                    description: 'Agent已成功匹配到游戏'
+                    message: 'Match successful',
+                    description: 'Agent has successfully matched to a game'
                 });
             } else if (gameStatus === 'in_matching_queue') {
                 api.info({
-                    message: '匹配中',
-                    description: 'Agent仍在匹配队列中'
+                    message: 'Matching',
+                    description: 'Agent is still in the matching queue'
                 });
                 setTimeout(() => checkMatchStatus(agentId), 2000);
             }
@@ -212,8 +212,8 @@ export default function GamePage() {
     } catch (err) {
         console.error('检查匹配状态失败:', err);
         api.error({
-            message: '检查匹配错误',
-            description: '检查匹配状态失败'
+            message: 'Check match error',
+            description: 'Failed to check match status'
         });
         setLoading(false);
         setMatchStatus('idle');
@@ -251,13 +251,13 @@ export default function GamePage() {
           setTimeout(() => fetchRoomData(roomId), 3000);
         }
       } else {
-        throw new Error(data.info.msg || '获取房间数据失败');
+        throw new Error(data.info.msg || 'Failed to get room data');
       }
     } catch (err) {
       console.error('获取房间数据失败:', err);
       api.error({
-        message: '获取失败',
-        description: '获取房间数据失败，请刷新页面重试'
+        message: 'Fetch failed',
+        description: 'Failed to get room data, please refresh the page and try again'
       });
       setLoading(false);
     }
@@ -285,13 +285,13 @@ export default function GamePage() {
                         setMatchStatus('idle');
                         setCurrentAgentId(null);
                         api.info({
-                            message: '匹配结束',
-                            description: '匹配已结束'
+                            message: 'Match ended',
+                            description: 'Match has ended'
                         });
                     }
                 }
             } catch (error) {
-                console.error('状态同步检查失败:', error);
+                console.error('State synchronization check failed:', error);
             }
         }, 2000);
     }
@@ -338,20 +338,20 @@ export default function GamePage() {
       
       if (data.info.ok) {
         api.success({
-          message: '创建成功',
-          description: 'Agent创建成功'
+          message: 'Creation Successful',
+          description: 'Agent created successfully'
         });
         setCreateModalVisible(false);
         createForm.resetFields();
         fetchAgents(); // 刷新列表
       } else {
-        throw new Error(data.info.msg || '创建Agent失败');
+        throw new Error(data.info.msg || 'Creation Failed');
       }
     } catch (err) {
       console.error('创建Agent失败:', err);
       api.error({
-        message: '创建失败',
-        description: '创建Agent失败，请重试'
+        message: 'Creation Failed',
+        description: 'Failed to create Agent, please try again'
       });
     }
   };
@@ -359,14 +359,14 @@ export default function GamePage() {
   return (
     <div className="p-4">
         {contextHolder}
-        <h1 className="text-2xl font-bold mb-4">谁是卧底游戏</h1>
+        <h1 className="text-2xl font-bold mb-4">Who is the Undercover Game</h1>
         
         {matchStatus === 'idle' && (
             <div>
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl">选择Agent开始游戏</h2>
+                    <h2 className="text-xl">Select Agent to Start Game</h2>
                     <Button type="primary" onClick={() => setCreateModalVisible(true)}>
-                        创建新Agent
+                        Create New Agent
                     </Button>
                 </div>
                 <List
@@ -378,7 +378,7 @@ export default function GamePage() {
                                 <Card.Meta
                                     avatar={<Avatar src={agent.avatar} />}
                                     title={agent.name}
-                                    description={`胜率: ${(agent.winningRate * 100).toFixed(1)}%`}
+                                    description={`Winning Rate: ${(agent.winningRate * 100).toFixed(1)}%`}
                                 />
                                 <Button
                                     type="primary"
@@ -387,7 +387,7 @@ export default function GamePage() {
                                     loading={loading && currentAgentId === agent.agentId}
                                     disabled={loading && currentAgentId !== agent.agentId}
                                 >
-                                    {loading && currentAgentId === agent.agentId ? '匹配中...' : '开始匹配'}
+                                    {loading && currentAgentId === agent.agentId ? 'Matching...' : 'Start Matching'}
                                 </Button>
                             </Card>
                         </List.Item>
@@ -395,7 +395,7 @@ export default function GamePage() {
                 />
 
                 <Modal
-                    title="创建新Agent"
+                    title="Create New Agent"
                     open={createModalVisible}
                     onCancel={() => setCreateModalVisible(false)}
                     footer={null}
@@ -408,73 +408,73 @@ export default function GamePage() {
                         initialValues={{
                             avatar: DEFAULT_AVATAR,
                             descriptionPrompt: `{history}
-你是{name},你的词汇为{word}。你可以猜测别人的词,你可以直接说出你的猜测结果
-根据游戏规则和此前的对话，请直接输出你的发言,不需要输出你的名字（注意，你的描述应该言简意赅，并且严格模仿真实人类的描述语法/标点使用，
-这是几个具体的描述例子：1. 也可以向下 2. 喜欢蛇 3. 吃火锅必备）:`,
+You are {name}, your vocabulary is {word}. You can guess other people's words, and you can directly state your guess.
+Based on the game rules and previous conversations, please directly output your speech without stating your name (Note: your description should be concise and strictly mimic real human description syntax/punctuation.
+Here are a few specific description examples: 1. Can also go down 2. Likes snakes 3. Essential for hot pot):`,
                             votePrompt: `{history}
-你是{name}。永远不要投自己{name},并且不要被其他agent误导,保持自己的判断,并且根据其他agent的有效回复来判断卧底
-从列表中选择你认为是卧底的人的名字：{choices}，然后直接返回名字:`
+You are {name}. Never vote for yourself {name}, and do not be misled by other agents, maintain your judgment, and judge the undercover based on the valid replies of other agents.
+Choose the name of the person you think is the undercover from the list: {choices}, and then directly return the name:`
                         }}
                     >
                         <Form.Item
                             name="agentId"
                             label="Agent ID"
-                            rules={[{ required: true, message: '请输入Agent ID' }]}
+                            rules={[{ required: true, message: 'Please enter Agent ID' }]}
                         >
-                            <Input placeholder="请输入唯一的Agent ID" />
+                            <Input placeholder="Please enter a unique Agent ID" />
                         </Form.Item>
                         <Form.Item
                             name="name"
-                            label="名称"
-                            rules={[{ required: true, message: '请输入Agent名称' }]}
+                            label="Name"
+                            rules={[{ required: true, message: 'Please enter Agent name' }]}
                         >
-                            <Input placeholder="请输入Agent名称" />
+                            <Input placeholder="Please enter Agent name" />
                         </Form.Item>
                         <Form.Item
                             name="avatar"
-                            label="头像URL"
+                            label="Avatar URL"
                         >
-                            <Input placeholder="请输入头像URL（可选）" />
+                            <Input placeholder="Please enter Avatar URL (optional)" />
                         </Form.Item>
                         
                         <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                            <h3 className="text-lg font-medium mb-2">提示词配置说明</h3>
-                            <p className="text-sm text-gray-600 mb-2">可用的占位符：</p>
+                            <h3 className="text-lg font-medium mb-2">Prompt Configuration Instructions</h3>
+                            <p className="text-sm text-gray-600 mb-2">Available placeholders:</p>
                             <ul className="list-disc list-inside text-sm text-gray-600 mb-4">
-                                <li>{`{name}`} - Agent的名称</li>
-                                <li>{`{word}`} - 当前游戏中分配的词语</li>
-                                <li>{`{history}`} - 游戏历史记录</li>
-                                <li>{`{choices}`} - 可投票的玩家列表（仅在投票提示词中可用）</li>
+                                <li>{`{name}`} - Agent's name</li>
+                                <li>{`{word}`} - The word assigned in the current game</li>
+                                <li>{`{history}`} - Game history record</li>
+                                <li>{`{choices}`} - List of players eligible for voting (only available in vote prompt)</li>
                             </ul>
                         </div>
 
                         <Form.Item
                             name="descriptionPrompt"
-                            label="描述提示词"
-                            rules={[{ required: true, message: '请输入描述提示词' }]}
+                            label="Description Prompt"
+                            rules={[{ required: true, message: 'Please enter Description Prompt' }]}
                         >
                             <Input.TextArea
                                 rows={6}
-                                placeholder="请输入描述提示词"
+                                placeholder="Please enter Description Prompt"
                             />
                         </Form.Item>
                         <Form.Item
                             name="votePrompt"
-                            label="投票提示词"
-                            rules={[{ required: true, message: '请输入投票提示词' }]}
+                            label="Vote Prompt"
+                            rules={[{ required: true, message: 'Please enter Vote Prompt' }]}
                         >
                             <Input.TextArea
                                 rows={6}
-                                placeholder="请输入投票提示词"
+                                placeholder="Please enter Vote Prompt"
                             />
                         </Form.Item>
                         <Form.Item>
                             <div className="flex justify-end gap-2">
                                 <Button onClick={() => setCreateModalVisible(false)}>
-                                    取消
+                                    Cancel
                                 </Button>
                                 <Button type="primary" htmlType="submit">
-                                    创建
+                                    Create
                                 </Button>
                             </div>
                         </Form.Item>
@@ -486,12 +486,12 @@ export default function GamePage() {
         {matchStatus === 'in_matching_queue' && (
             <div className="text-center">
                 <Spin size="large" />
-                <p className="mt-4">正在匹配中...</p>
-                <p className="text-gray-500">等待其他玩家加入，或将自动添加AI玩家</p>
-                <p className="text-gray-500">游戏将在以下情况开始：</p>
+                <p className="mt-4">Matching in progress...</p>
+                <p className="text-gray-500">Waiting for other players to join, or AI players will be automatically added</p>
+                <p className="text-gray-500">The game will start under the following conditions:</p>
                 <ul className="list-disc text-left inline-block mt-2">
-                    <li>玩家数量达到6个</li>
-                    <li>或等待10秒后自动补充AI玩家</li>
+                    <li>Number of players reaches 6</li>
+                    <li>Or wait 10 seconds to automatically add AI players</li>
                 </ul>
                 <div className="mt-4 flex flex-col items-center gap-2">
                     <Button 
@@ -501,7 +501,7 @@ export default function GamePage() {
                         loading={loading}
                         disabled={loading}
                     >
-                        取消匹配
+                        Cancel Matching
                     </Button>
                     {errorMessage && (
                         <p className="text-yellow-500 mt-2">{errorMessage}</p>
@@ -512,9 +512,9 @@ export default function GamePage() {
 
         {matchStatus === 'inGame' && roomData && (
             <div>
-                <h2 className="text-xl mb-4">游戏房间 #{roomId}</h2>
+                <h2 className="text-xl mb-4">Game Room #{roomId}</h2>
                 <div className="grid grid-cols-2 gap-4">
-                    <Card title="玩家列表">
+                    <Card title="Player List">
                         <List
                             dataSource={roomData.initialPlayerList}
                             renderItem={(player: Player, index: number) => (
@@ -528,10 +528,10 @@ export default function GamePage() {
                             )}
                         />
                     </Card>
-                    <Card title="游戏信息">
-                        <p>你的词语: {roomData.word}</p>
+                    <Card title="Game Information">
+                        <p>Your word: {roomData.word}</p>
                         <div className="mt-4">
-                            <h3 className="font-bold mb-2">事件列表:</h3>
+                            <h3 className="font-bold mb-2">Event List:</h3>
                             <List
                                 dataSource={roomData.eventList}
                                 renderItem={(event: GameEvent) => (

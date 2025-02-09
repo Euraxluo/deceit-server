@@ -127,7 +127,7 @@ export class AgentService {
     public async perceive(agentId: string, req: AgentRequest): Promise<void> {
         const agent = await this.storageService.getAgentById(agentId)
         if (!agent) {
-            throw new Error('Agent not found')
+            throw new Error('Agent不存在')
         }
 
         let memory = this.getMemory(agentId)
@@ -140,29 +140,34 @@ export class AgentService {
             case 'start':
                 this.clearMemory(agentId)
                 this.initMemory(agentId, agent.name)
-                this.appendHistory(agentId, 'Host: Game started, welcome to "Who is the Spy"!')
+                this.appendHistory(agentId, '主持人: 女士们先生们，欢迎来到《谁是卧底》游戏！我们有一个由6名玩家组成的小组，在其中有一名卧底。让我们开始吧！每个人都会收到一张纸。其中5人的纸上拥有相同的单词，而卧底则会收到含义上相似的单词。我们将大多数人拿到的单词称为"公共词"，将卧底拿到的单词称为"卧底词"。一旦你拿到了你的单词，首先需要根据其他人的发言判断自己是否拿到了卧底词。如果判断自己拿到了卧底词，请猜测公共词是什么，然后描述公共词来混淆视听，避免被投票淘汰。如果判断自己拿到了公共词，请思考如何巧妙地描述它而不泄露它，不能让卧底察觉，也要给同伴暗示。每人每轮用一句话描述自己拿到的词语，每个人的描述禁止重复，话中不能出现所持词语。每轮描述完毕，所有在场的人投票选出怀疑是卧底的那个人，得票数最多的人出局。卧底出局则游戏结束，若卧底未出局，游戏继续。现在游戏开始。')
                 break
             case 'distribution':
                 if (req.word) {
                     this.updateMemory(agentId, { word: req.word })
-                    this.appendHistory(agentId, `Host: ${agent.name}, your word is: ${req.word}`)
+                    this.appendHistory(agentId, `主持人: ${agent.name}，你分配到的单词是：${req.word}`)
                 }
                 break
             case 'round':
                 if (req.name && req.message) {
                     this.appendHistory(agentId, `${req.name}: ${req.message}`)
                 } else if (req.round) {
-                    this.appendHistory(agentId, `Host: Round ${req.round} begins`)
+                    this.appendHistory(agentId, `主持人: 现在进入第${req.round}轮。`)
+                    this.appendHistory(agentId, '主持人: 每个玩家描述自己分配到的单词。')
                 }
                 break
             case 'vote':
                 if (req.name && req.message) {
-                    this.appendHistory(agentId, `${req.name}: Votes for ${req.message}`)
+                    this.appendHistory(agentId, `${req.name}: 投票给 ${req.message}`)
+                } else {
+                    this.appendHistory(agentId, '主持人: 到了投票的时候了。每个人，请指向你认为可能是卧底的人。')
                 }
                 break
             case 'vote_result':
                 if (req.message) {
-                    this.appendHistory(agentId, `Host: ${req.message}`)
+                    this.appendHistory(agentId, `主持人: ${req.message}`)
+                } else {
+                    this.appendHistory(agentId, '主持人: 无人出局。')
                 }
                 break
             case 'result':
@@ -177,12 +182,12 @@ export class AgentService {
     public async interact(agentId: string, req: AgentRequest): Promise<AgentResponse> {
         const agent = await this.storageService.getAgentById(agentId)
         if (!agent) {
-            return { success: false, errMsg: 'Agent not found' }
+            return { success: false, errMsg: 'Agent不存在' }
         }
 
         const memory = this.getMemory(agentId)
         if (!memory) {
-            return { success: false, errMsg: 'Memory not initialized' }
+            return { success: false, errMsg: '记忆未初始化' }
         }
 
         try {
@@ -192,11 +197,11 @@ export class AgentService {
                 case 'vote':
                     return await this.generateVote(agent, memory, req.choices || [])
                 default:
-                    return { success: false, errMsg: 'Unsupported status' }
+                    return { success: false, errMsg: '不支持的状态' }
             }
         } catch (err) {
-            console.error('Failed to generate agent behavior:', err)
-            return { success: false, errMsg: 'Failed to generate behavior' }
+            console.error('Agent行为生成失败:', err)
+            return { success: false, errMsg: '行为生成失败' }
         }
     }
 
@@ -205,7 +210,7 @@ export class AgentService {
         const prompts = this.getPrompts(agent)
         const descPrompt = prompts.spy?.description
         if (!descPrompt) {
-            return { success: false, errMsg: 'Description template not set' }
+            return { success: false, errMsg: '描述词模板未设置' }
         }
 
         const prompt = descPrompt
@@ -217,8 +222,8 @@ export class AgentService {
             const result = await this.llmCall(prompt)
             return { success: true, result }
         } catch (err) {
-            console.error('Failed to generate description:', err)
-            return { success: false, errMsg: 'Failed to generate description' }
+            console.error('描述生成失败:', err)
+            return { success: false, errMsg: '描述生成失败' }
         }
     }
 
@@ -227,20 +232,23 @@ export class AgentService {
         const prompts = this.getPrompts(agent)
         const votePrompt = prompts.spy?.vote
         if (!votePrompt) {
-            return { success: false, errMsg: 'Vote strategy template not set' }
+            return { success: false, errMsg: '投票策略模板未设置' }
         }
+
+        // 排除自己
+        const validChoices = choices.filter(name => name !== memory.name)
 
         const prompt = votePrompt
             .replace('{name}', memory.name)
-            .replace('{choices}', choices.join(', '))
+            .replace('{choices}', validChoices.join(', '))
             .replace('{history}', memory.history.join('\n'))
 
         try {
             const result = await this.llmCall(prompt)
             return { success: true, result }
         } catch (err) {
-            console.error('Failed to generate vote:', err)
-            return { success: false, errMsg: 'Failed to generate vote' }
+            console.error('投票生成失败:', err)
+            return { success: false, errMsg: '投票生成失败' }
         }
     }
 
