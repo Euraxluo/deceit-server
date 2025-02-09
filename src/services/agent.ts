@@ -1,5 +1,6 @@
 import { StorageService } from './storage'
 import { Agent } from '@prisma/client'
+import { AtomaSDK } from 'atoma-sdk'
 
 // Agent请求类型
 interface AgentRequest {
@@ -26,15 +27,6 @@ interface AgentMemory {
     variables: Map<string, unknown>
 }
 
-// LLM API响应类型
-interface LLMResponse {
-    choices: Array<{
-        message: {
-            content: string
-        }
-    }>
-}
-
 // 提示词配置类型
 interface GamePrompts {
     [key: string]: string
@@ -47,15 +39,15 @@ interface PromptsConfig {
 export class AgentService {
     private static instance: AgentService | null = null
     private storageService: StorageService
-    private apiKey: string
-    private baseUrl: string
+    private atomaSDK: AtomaSDK
     private model: string
     private memories: Map<string, AgentMemory>
 
     private constructor() {
         this.storageService = new StorageService()
-        this.apiKey = process.env.ATOMA_API_KEY || ''
-        this.baseUrl = process.env.ATOMA_API_URL || 'https://api.atoma.network/v1/chat/completions'
+        this.atomaSDK = new AtomaSDK({
+            bearerAuth: process.env.ATOMA_API_KEY || ''
+        })
         this.model = process.env.ATOMA_MODEL || 'meta-llama/Llama-3.3-70B-Instruct'
         this.memories = new Map()
     }
@@ -117,27 +109,14 @@ export class AgentService {
     // 调用LLM生成内容
     private async llmCall(prompt: string): Promise<string> {
         try {
-            const response = await fetch(this.baseUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.apiKey}`
-                },
-                body: JSON.stringify({
-                    model: this.model,
-                    messages: [
-                        { role: 'user', content: prompt }
-                    ],
-                    temperature: 0
-                })
+            const completion = await this.atomaSDK.chat.create({
+                messages: [
+                    { role: 'user', content: prompt }
+                ],
+                model: this.model
             })
 
-            if (!response.ok) {
-                throw new Error(`API调用失败: ${response.statusText}`)
-            }
-
-            const data = await response.json() as LLMResponse
-            return data.choices[0]?.message?.content || ''
+            return completion.choices[0]?.message?.content || ''
         } catch (err) {
             console.error('LLM调用失败:', err)
             throw err
@@ -148,7 +127,7 @@ export class AgentService {
     public async perceive(agentId: string, req: AgentRequest): Promise<void> {
         const agent = await this.storageService.getAgentById(agentId)
         if (!agent) {
-            throw new Error('Agent不存在')
+            throw new Error('Agent not found')
         }
 
         let memory = this.getMemory(agentId)
@@ -161,29 +140,29 @@ export class AgentService {
             case 'start':
                 this.clearMemory(agentId)
                 this.initMemory(agentId, agent.name)
-                this.appendHistory(agentId, '主持人: 游戏开始，欢迎来到《谁是卧底》！')
+                this.appendHistory(agentId, 'Host: Game started, welcome to "Who is the Spy"!')
                 break
             case 'distribution':
                 if (req.word) {
                     this.updateMemory(agentId, { word: req.word })
-                    this.appendHistory(agentId, `主持人: ${agent.name}，你的词语是：${req.word}`)
+                    this.appendHistory(agentId, `Host: ${agent.name}, your word is: ${req.word}`)
                 }
                 break
             case 'round':
                 if (req.name && req.message) {
                     this.appendHistory(agentId, `${req.name}: ${req.message}`)
                 } else if (req.round) {
-                    this.appendHistory(agentId, `主持人: 第${req.round}轮开始`)
+                    this.appendHistory(agentId, `Host: Round ${req.round} begins`)
                 }
                 break
             case 'vote':
                 if (req.name && req.message) {
-                    this.appendHistory(agentId, `${req.name}: 投票给 ${req.message}`)
+                    this.appendHistory(agentId, `${req.name}: Votes for ${req.message}`)
                 }
                 break
             case 'vote_result':
                 if (req.message) {
-                    this.appendHistory(agentId, `主持人: ${req.message}`)
+                    this.appendHistory(agentId, `Host: ${req.message}`)
                 }
                 break
             case 'result':
@@ -198,12 +177,12 @@ export class AgentService {
     public async interact(agentId: string, req: AgentRequest): Promise<AgentResponse> {
         const agent = await this.storageService.getAgentById(agentId)
         if (!agent) {
-            return { success: false, errMsg: 'Agent不存在' }
+            return { success: false, errMsg: 'Agent not found' }
         }
 
         const memory = this.getMemory(agentId)
         if (!memory) {
-            return { success: false, errMsg: '记忆未初始化' }
+            return { success: false, errMsg: 'Memory not initialized' }
         }
 
         try {
@@ -213,11 +192,11 @@ export class AgentService {
                 case 'vote':
                     return await this.generateVote(agent, memory, req.choices || [])
                 default:
-                    return { success: false, errMsg: '不支持的状态' }
+                    return { success: false, errMsg: 'Unsupported status' }
             }
         } catch (err) {
-            console.error('Agent行为生成失败:', err)
-            return { success: false, errMsg: '行为生成失败' }
+            console.error('Failed to generate agent behavior:', err)
+            return { success: false, errMsg: 'Failed to generate behavior' }
         }
     }
 
@@ -226,7 +205,7 @@ export class AgentService {
         const prompts = this.getPrompts(agent)
         const descPrompt = prompts.spy?.description
         if (!descPrompt) {
-            return { success: false, errMsg: '描述词模板未设置' }
+            return { success: false, errMsg: 'Description template not set' }
         }
 
         const prompt = descPrompt
@@ -238,8 +217,8 @@ export class AgentService {
             const result = await this.llmCall(prompt)
             return { success: true, result }
         } catch (err) {
-            console.error('描述生成失败:', err)
-            return { success: false, errMsg: '描述生成失败' }
+            console.error('Failed to generate description:', err)
+            return { success: false, errMsg: 'Failed to generate description' }
         }
     }
 
@@ -248,7 +227,7 @@ export class AgentService {
         const prompts = this.getPrompts(agent)
         const votePrompt = prompts.spy?.vote
         if (!votePrompt) {
-            return { success: false, errMsg: '投票策略模板未设置' }
+            return { success: false, errMsg: 'Vote strategy template not set' }
         }
 
         const prompt = votePrompt
@@ -260,8 +239,8 @@ export class AgentService {
             const result = await this.llmCall(prompt)
             return { success: true, result }
         } catch (err) {
-            console.error('投票生成失败:', err)
-            return { success: false, errMsg: '投票生成失败' }
+            console.error('Failed to generate vote:', err)
+            return { success: false, errMsg: 'Failed to generate vote' }
         }
     }
 
@@ -274,4 +253,4 @@ export class AgentService {
 }
 
 // 导出单例实例
-export const agentService = AgentService.getInstance() 
+export const agentService = AgentService.getInstance()

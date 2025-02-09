@@ -45,7 +45,7 @@ export class StorageService {
                 name: agent.name,
                 avatar: agent.avatar || null,
                 status: agent.status || '1',
-                statusName: agent.statusName || '在线',
+                statusName: agent.statusName || 'Online',
                 matchStartTime: agent.matchStartTime ? new Date(agent.matchStartTime) : null,
                 winCount: agent.winCount || 0,
                 gameCount: agent.gameCount || 0,
@@ -305,7 +305,7 @@ export class StorageService {
             },
             data: {
                 status: '1',
-                statusName: '在线',
+                statusName: 'Online',
                 matchStartTime: null
             }
         });
@@ -388,13 +388,19 @@ export class StorageService {
      */
     async initTestData(): Promise<void> {
         const defaultPrompts = JSON.stringify({
-            descriptionPrompt: `{history}
-你是{name},你的词汇为{word}。你可以猜测别人的词,你可以直接说出你的猜测结果
-根据游戏规则和此前的对话，请直接输出你的发言,不需要输出你的名字（注意，你的描述应该言简意赅，并且严格模仿真实人类的描述语法/标点使用，
-这是几个具体的描述例子：1. 也可以向下 2. 喜欢蛇 3. 吃火锅必备）:`,
-            votePrompt: `{history}
-你是{name}。永远不要投自己{name},并且不要被其他agent误导,保持自己的判断,并且根据其他agent的有效回复来判断卧底
-从列表中选择你认为是卧底的人的名字：{choices}，然后直接返回名字:`
+            "spy": {
+                "description": `{history}
+You are {name}, your word is {word}. You can guess others' words and directly express your guesses.
+Based on the game rules and previous conversations, please directly output your speech without stating your name (Note: your description should be concise and strictly mimic real human description syntax/punctuation,
+Here are some specific examples: 1. Can move downward 2. Likes snakes 3. Essential for hotpot):`,
+                "vote": `{history}
+You are {name}. Never vote for yourself {name}, don't be misled by other agents, maintain your own judgment, and determine the spy based on other agents' valid responses.
+From the list, choose the name of who you think is the spy: {choices}, then directly return the name:`
+            },
+            "mafia": {
+                "description": "...",
+                "vote": "..."
+            }
         });
 
         const defaultAvatar = 'https://img.alicdn.com/imgextra/i6/O1CN01yCnY2D1YS9kn1IyLJ_!!6000000003057-0-tps-300-300.jpg';
@@ -403,72 +409,72 @@ export class StorageService {
             {
                 agentId: "test_agent_1",
                 avatar: defaultAvatar,
-                name: "测试Agent1",
+                name: "Test Agent 1",
                 score: 173.2,
                 winCount: 90,
                 gameCount: 219,
                 status: "1",
-                statusName: "在线",
+                statusName: "Online",
                 matchStartTime: new Date().toISOString(),
                 prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_2",
                 avatar: defaultAvatar,
-                name: "测试Agent2",
+                name: "Test Agent 2",
                 score: 185.5,
                 winCount: 94,
                 gameCount: 180,
                 status: "1",
-                statusName: "在线",
+                statusName: "Online",
                 matchStartTime: new Date().toISOString(),
                 prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_3",
                 avatar: defaultAvatar,
-                name: "测试Agent3",
+                name: "Test Agent 3",
                 score: 195.8,
                 winCount: 72,
                 gameCount: 150,
                 status: "1",
-                statusName: "在线",
+                statusName: "Online",
                 matchStartTime: new Date().toISOString(),
                 prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_4",
                 avatar: defaultAvatar,
-                name: "测试Agent4",
+                name: "Test Agent 4",
                 score: 200.0,
                 winCount: 50,
                 gameCount: 100,
                 status: "1",
-                statusName: "在线",
+                statusName: "Online",
                 matchStartTime: new Date().toISOString(),
                 prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_5",
                 avatar: defaultAvatar,
-                name: "测试Agent5",
+                name: "Test Agent 5",
                 score: 210.5,
                 winCount: 66,
                 gameCount: 120,
                 status: "1",
-                statusName: "在线",
+                statusName: "Online",
                 matchStartTime: new Date().toISOString(),
                 prompts: defaultPrompts
             },
             {
                 agentId: "test_agent_6",
                 avatar: defaultAvatar,
-                name: "测试Agent6",
+                name: "Test Agent 6",
                 score: 220.8,
                 winCount: 78,
                 gameCount: 130,
                 status: "1",
-                statusName: "在线",
+                statusName: "Online",
                 matchStartTime: new Date().toISOString(),
                 prompts: defaultPrompts
             }
@@ -477,7 +483,7 @@ export class StorageService {
         for (const agent of testAgents) {
             await this.saveAgent(agent);
         }
-        console.log('[初始化] 测试数据初始化完成');
+        console.log('[Initialize] Test data initialization completed');
     }
 
     // 获取Agent详细信息
@@ -489,9 +495,6 @@ export class StorageService {
 
     // 更新Agent信息
     async updateAgent(agentId: string, data: {
-        descriptionPrompt?: string
-        votePrompt?: string
-        systemPrompt?: string
         status?: string
         statusName?: string
         matchStartTime?: Date | null

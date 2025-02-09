@@ -28,9 +28,9 @@ export class GameService {
     } as const
 
     private static readonly MOCK_NAMES = [
-        '张三', '李四', '王五', '赵六', '钱七', '孙八', 
-        '周九', '吴十', '郑一', '王二', '刘一', '陈二', 
-        '杨三', '黄四', '周五', '吴六'
+        'Alex', 'Bob', 'Charlie', 'David', 'Emma', 'Frank', 
+        'George', 'Henry', 'Ivy', 'Jack', 'Kate', 'Leo', 
+        'Mike', 'Nancy', 'Oliver', 'Peter'
     ] as const
 
     private static readonly STATE_TRANSITIONS: Record<AgentGameStatus, AgentGameStatus[]> = {
@@ -45,7 +45,7 @@ export class GameService {
         this.contractService = new ContractService()
         this.storageService = new StorageService()
         this.initializeService().catch(error => {
-            console.error('[服务] 初始化失败:', error)
+            console.error('[Service] Initialization failed:', error)
         })
     }
 
@@ -65,9 +65,9 @@ export class GameService {
             await this.storageService.resetAllAgentStatus()
             // 启动匹配服务
             this.startMatchingService()
-            console.log('[服务] 初始化完成')
+            console.log('[Service] Initialization completed')
         } catch (error) {
-            console.error('[服务] 初始化失败:', error)
+            console.error('[Service] Initialization failed:', error)
             throw error
         }
     }
@@ -76,7 +76,7 @@ export class GameService {
     private startMatchingService(): void {
         if (!GameService.checkInterval) {
             GameService.checkInterval = setInterval(() => this.checkAndMatchPlayers(), 5000)
-            console.log('[服务] 匹配服务已启动')
+            console.log('[Service] Matching service started')
         }
     }
 
@@ -85,14 +85,14 @@ export class GameService {
         if (GameService.checkInterval) {
             clearInterval(GameService.checkInterval)
             GameService.checkInterval = null
-            console.log('[服务] 匹配服务已停止')
+            console.log('[Service] Matching service stopped')
         }
     }
 
     // 为房间生成随机名字列表
     private static getRandomMockNames(count: number): string[] {
         if (count > GameService.MOCK_NAMES.length) {
-            throw new Error(`请求的名字数量(${count})超过了可用名字总数(${GameService.MOCK_NAMES.length})`);
+            throw new Error(`Requested name count (${count}) exceeds available names (${GameService.MOCK_NAMES.length})`);
         }
 
         // 复制一份名字数组
@@ -133,7 +133,7 @@ export class GameService {
         
         // 状态转换验证
         if (state.status && !GameService.STATE_TRANSITIONS[currentState.status].includes(state.status)) {
-            throw new Error(`非法的状态转换: ${currentState.status} -> ${state.status}`);
+            throw new Error(`Invalid state transition: ${currentState.status} -> ${state.status}`);
         }
         
         const newState = {
@@ -147,7 +147,7 @@ export class GameService {
 
     // 统一错误处理
     private static async handleServiceError(operation: string, error: unknown): Promise<void> {
-        const errorMessage = error instanceof Error ? error.message : '未知错误'
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         const errorStack = error instanceof Error ? error.stack : ''
         const errorTime = new Date().toISOString()
         
@@ -165,7 +165,7 @@ export class GameService {
             }
         }
         
-        console.error('[错误]', JSON.stringify(errorLog, null, 2))
+        console.error('[Error]', JSON.stringify(errorLog, null, 2))
         
         // 确保重置处理状态
         GameService.isProcessingMatch = false
@@ -180,19 +180,19 @@ export class GameService {
             // 1. 先检查 agent 是否存在
             const agent = await this.contractService.getAgentById(agentId)
             if (!agent) {
-                throw new Error('Agent不存在')
+                throw new Error('Agent not found')
             }
 
             // 2. 再检查状态
             const currentState = await GameService.getAgentState(agentId)
             if (currentState.status !== 'idle') {
-                throw new Error(`Agent当前状态(${currentState.status})不允许开始匹配`)
+                throw new Error(`Agent's current status (${currentState.status}) does not allow matching`)
             }
 
             // 3. 更新状态并加入匹配队列
             await this.startMatchingTransaction(agent)
         } catch (error) {
-            await GameService.handleServiceError('开始匹配', error)
+            await GameService.handleServiceError('Start matching', error)
         }
     }
 
@@ -218,7 +218,7 @@ export class GameService {
     async cancelMatching(agentId: string): Promise<void> {
         const currentState = await GameService.getAgentState(agentId)
         if (currentState.status !== 'in_matching_queue') {
-            throw new Error(`Agent当前状态(${currentState.status})不允许取消匹配`)
+            throw new Error(`Agent's current status (${currentState.status}) does not allow canceling match`)
         }
 
         try {
@@ -228,7 +228,7 @@ export class GameService {
             // 更新内存状态为空闲
             await GameService.updateAgentState(agentId, { status: 'idle', roomId: null })
         } catch (error) {
-            console.error(`[匹配] 取消Agent ${agentId} 匹配失败:`, error)
+            console.error(`[Match] Failed to cancel matching for Agent ${agentId}:`, error)
             throw error
         }
     }
@@ -304,112 +304,133 @@ export class GameService {
     private async processSpeech(gameState: GameState, action: { agentId: string, content: string }): Promise<void> {
         const player = gameState.players.find(p => p.agentId === action.agentId)
         if (!player) {
-            throw new Error('玩家不存在')
+            throw new Error('Player not found')
         }
 
-        if (player.playerStatus === 'dead') {
-            throw new Error('死亡玩家不能发言')
-        }
-
-        const event: GameEvent = {
+        // 添加发言事件
+        gameState.events.push({
             round: gameState.currentRound,
             eventType: 'speech',
+            agentId: action.agentId || '',
+            mockName: player.mockName,
             text: action.content,
-            highLightIndex: gameState.players.findIndex(p => p.agentId === action.agentId),
+            playerList: gameState.players,
             currentStatusDescriptions: this.generateStatusDescriptions(gameState),
-            playerList: gameState.players
-        }
+            highLightIndex: gameState.players.findIndex(p => p.agentId === action.agentId)
+        })
 
-        gameState.events.push(event)
+        // 保存游戏状态
+        await this.storageService.saveGame(gameState)
     }
 
     // 处理投票
     private async processVote(gameState: GameState, action: { agentId: string, voteToMockName: string }): Promise<void> {
-        const player = gameState.players.find(p => p.agentId === action.agentId)
-        if (!player) {
-            throw new Error('玩家不存在')
+        const voter = gameState.players.find(p => p.agentId === action.agentId)
+        if (!voter) {
+            throw new Error('Voter not found')
         }
 
-        if (player.playerStatus === 'dead') {
-            throw new Error('死亡玩家不能投票')
+        const votedPlayer = gameState.players.find(p => p.mockName === action.voteToMockName)
+        if (!votedPlayer) {
+            throw new Error('Voted player not found')
         }
 
-        const targetPlayer = gameState.players.find(p => p.mockName === action.voteToMockName)
-        if (!targetPlayer) {
-            throw new Error('投票目标不存在')
-        }
+        // 检查投票有效性
+        const voteIsValid = voter.playerStatus === 'alive' && votedPlayer.playerStatus === 'alive'
 
-        const event: GameEvent = {
+        // 添加投票事件
+        gameState.events.push({
             round: gameState.currentRound,
             eventType: 'vote',
+            agentId: action.agentId || '',
+            mockName: voter.mockName,
             voteToMockName: action.voteToMockName,
-            voteToAgentId: targetPlayer.agentId || undefined,
-            voteIsValid: true,
-            highLightIndex: gameState.players.findIndex(p => p.agentId === action.agentId),
+            voteToAgentId: votedPlayer.agentId || '',
+            voteIsValid,
+            playerList: gameState.players,
             currentStatusDescriptions: this.generateStatusDescriptions(gameState),
-            playerList: gameState.players
-        }
+            highLightIndex: gameState.players.findIndex(p => p.agentId === action.agentId)
+        })
 
-        gameState.events.push(event)
-
-        // 检查是否所有活着的玩家都已投票
-        const alivePlayersCount = gameState.players.filter(p => p.playerStatus === 'alive').length
-        const currentRoundVotes = gameState.events.filter(e => 
-            e.round === gameState.currentRound && 
-            e.eventType === 'vote' && 
-            e.voteIsValid
-        ).length
-
-        if (currentRoundVotes === alivePlayersCount) {
+        // 如果所有存活玩家都已投票，处理本轮结果
+        const alivePlayers = gameState.players.filter(p => p.playerStatus === 'alive')
+        const validVotes = gameState.events
+            .filter(e => e.round === gameState.currentRound && e.eventType === 'vote' && e.voteIsValid)
+        
+        if (validVotes.length === alivePlayers.length) {
             await this.processRoundEnd(gameState)
+        } else {
+            // 保存游戏状态
+            await this.storageService.saveGame(gameState)
         }
     }
 
     // 处理回合结束
     private async processRoundEnd(gameState: GameState): Promise<void> {
-        // 统计投票
-        const votes = new Map<string, number>()
-        const currentRoundVotes = gameState.events.filter(e => 
-            e.round === gameState.currentRound && 
-            e.eventType === 'vote' && 
-            e.voteIsValid
-        )
+        // 统计本轮有效票数
+        const validVotes = gameState.events
+            .filter(e => e.round === gameState.currentRound && e.eventType === 'vote' && e.voteIsValid)
+            .map(e => e.voteToMockName || '')
 
-        for (const vote of currentRoundVotes) {
-            if (vote.voteToMockName) {
-                votes.set(
-                    vote.voteToMockName, 
-                    (votes.get(vote.voteToMockName) || 0) + 1
-                )
-            }
-        }
+        // 计算被投票最多的玩家
+        const voteCount = new Map<string, number>()
+        validVotes.forEach(mockName => {
+            voteCount.set(mockName, (voteCount.get(mockName) || 0) + 1)
+        })
 
-        // 找出票数最多的玩家
         let maxVotes = 0
         let votedOutPlayers: string[] = []
-        for (const [mockName, voteCount] of votes.entries()) {
-            if (voteCount > maxVotes) {
-                maxVotes = voteCount
+        voteCount.forEach((count, mockName) => {
+            if (count > maxVotes) {
+                maxVotes = count
                 votedOutPlayers = [mockName]
-            } else if (voteCount === maxVotes) {
+            } else if (count === maxVotes) {
                 votedOutPlayers.push(mockName)
             }
-        }
+        })
 
         // 处理投票结果
         if (votedOutPlayers.length === 1) {
             const votedOutPlayer = gameState.players.find(p => p.mockName === votedOutPlayers[0])
             if (votedOutPlayer) {
                 votedOutPlayer.playerStatus = 'dead'
+                // 添加投票结果事件
+                gameState.events.push({
+                    round: gameState.currentRound,
+                    eventType: 'hostSpeech',
+                    text: `${votedOutPlayer.mockName} has been voted out.`,
+                    playerList: gameState.players,
+                    currentStatusDescriptions: this.generateStatusDescriptions(gameState),
+                    highLightIndex: gameState.players.findIndex(p => p.mockName === votedOutPlayer.mockName)
+                })
             }
+        } else {
+            // 平票情况
+            gameState.events.push({
+                round: gameState.currentRound,
+                eventType: 'hostSpeech',
+                text: 'Tie vote, no one is eliminated.',
+                playerList: gameState.players,
+                currentStatusDescriptions: this.generateStatusDescriptions(gameState),
+                highLightIndex: -1
+            })
         }
 
         // 检查游戏是否结束
         if (this.checkGameOver(gameState)) {
             await this.endGame(gameState)
         } else {
-            // 进入下一回合
+            // 进入下一轮
             gameState.currentRound++
+            gameState.events.push({
+                round: gameState.currentRound,
+                eventType: 'start',
+                text: `Round ${gameState.currentRound} begins.`,
+                playerList: gameState.players,
+                currentStatusDescriptions: this.generateStatusDescriptions(gameState),
+                highLightIndex: -1
+            })
+            await this.storageService.saveGame(gameState)
         }
     }
 
@@ -424,45 +445,65 @@ export class GameService {
 
     // 结束游戏
     private async endGame(gameState: GameState): Promise<void> {
+        // 确定获胜方
         const alivePlayers = gameState.players.filter(p => p.playerStatus === 'alive')
-        const aliveSpies = alivePlayers.filter(p => p.role === 'spy').length
-        const winnerRole = aliveSpies === 0 ? 'innocent' : 'spy'
+        const aliveSpies = alivePlayers.filter(p => p.role === 'spy')
+        const winnerRole = aliveSpies.length > 0 ? 'spy' : 'innocent'
 
         // 更新游戏状态
         gameState.status = 'finished'
         gameState.endGameData = {
             winnerRole,
-            winners: gameState.players.filter(p => p.role === winnerRole),
+            winners: alivePlayers,
             scores: []
         }
 
         // 添加游戏结束事件
-        const event: GameEvent = {
+        gameState.events.push({
             round: gameState.currentRound,
             eventType: 'end',
-            winnerRole,
-            highLightIndex: 0,
+            text: `Game Over! ${winnerRole === 'spy' ? 'Spy' : 'Innocent'} team wins!`,
+            playerList: gameState.players,
             currentStatusDescriptions: this.generateStatusDescriptions(gameState),
-            playerList: gameState.players
+            highLightIndex: -1,
+            winnerRole
+        })
+
+        // 保存最终游戏状态
+        await this.storageService.saveGame(gameState)
+
+        // 重置所有玩家状态为idle
+        for (const player of gameState.players) {
+            if (player.agentId) {
+                await GameService.updateAgentState(player.agentId, { status: 'idle', roomId: null })
+            }
         }
-        gameState.events.push(event)
-
-        // 更新获胜者状态
-        const winnerIds = gameState.players
-            .filter(p => p.role === winnerRole)
-            .map(p => p.agentId)
-            .filter((id): id is string => id !== undefined)
-
-        await this.contractService.concludeGame(gameState.roomId, winnerIds)
     }
 
     // 生成状态描述
     private generateStatusDescriptions(gameState: GameState): string[] {
-        const descriptions: string[] = []
-        for (const player of gameState.players) {
-            descriptions.push(`${player.mockName}(${player.playerStatus})`)
+        const descriptions: string[] = [];
+        
+        if (gameState.status === 'waiting') {
+            descriptions.push('Waiting for players to join...');
+        } else if (gameState.status === 'playing') {
+            descriptions.push(`Round ${gameState.currentRound}`);
+            if (gameState.events.length > 0) {
+                const lastEvent = gameState.events[gameState.events.length - 1];
+                if (lastEvent.eventType === 'vote') {
+                    descriptions.push('Voting in progress...');
+                } else if (lastEvent.eventType === 'speech') {
+                    descriptions.push('Players are describing...');
+                }
+            }
+        } else if (gameState.status === 'finished') {
+            descriptions.push('Game Over');
+            if (gameState.endGameData) {
+                descriptions.push(`Winner: ${gameState.endGameData.winnerRole === 'spy' ? 'Spy' : 'Innocent'}`);
+            }
         }
-        return descriptions
+        
+        return descriptions;
     }
 
     // 创建游戏房间
