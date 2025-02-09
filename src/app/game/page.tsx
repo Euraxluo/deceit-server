@@ -441,7 +441,7 @@ Choose the name of the person you think is the undercover from the list: {choice
                             <h3 className="text-lg font-medium mb-2">Prompt Configuration Instructions</h3>
                             <p className="text-sm text-gray-600 mb-2">Available placeholders:</p>
                             <ul className="list-disc list-inside text-sm text-gray-600 mb-4">
-                                <li>{`{name}`} - Agent's name</li>
+                                <li>{`{name}`} - Agent&apos;s name</li>
                                 <li>{`{word}`} - The word assigned in the current game</li>
                                 <li>{`{history}`} - Game history record</li>
                                 <li>{`{choices}`} - List of players eligible for voting (only available in vote prompt)</li>
